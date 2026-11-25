@@ -48,3 +48,11 @@ Then in `~/.claude/settings.json`:
 
 `/context` gives a detailed breakdown on demand. This keeps the number in view all the time, so you
 can compact or start fresh before quality drops, without having to remember to check.
+
+## License & support
+
+[MIT](LICENSE) — free to use, copy, modify and redistribute.
+
+This is a personal tool shared as-is. **It isn't supported:** I don't take feature requests, bug
+reports or pull requests, and it may change or stop working whenever Claude Code changes its status
+line data. If you want it to work differently, fork it and make it yours.
