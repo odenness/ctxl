@@ -58,6 +58,26 @@ read -r S_PCT S_RESET < <(jq -r '[
   ] | map(tostring) | join(" ")' <<<"$INPUT" 2>/dev/null)
 
 RIGHT=""; RIGHT_COLORED=""
+
+# ── Optional session cost in £ (toggle with: ctxl cost) ──────────────────────
+CTXL_DIR="${CTXL_HOME:-$HOME/.claude/ctxl}"
+if [ -e "$CTXL_DIR/show-cost" ]; then
+  RATE_FILE="$CTXL_DIR/gbp-rate"
+  RATE=$(cat "$RATE_FILE" 2>/dev/null || true)
+  [[ "$RATE" =~ ^[0-9]*\.?[0-9]+$ ]] || RATE=0.77
+  # Refresh the cached rate at most once a day, in the background so we never block.
+  if [ ! -e "$RATE_FILE" ] || [ -n "$(find "$RATE_FILE" -mtime +0 2>/dev/null)" ]; then
+    touch "$RATE_FILE.tmp" 2>/dev/null
+    ( curl -sfL --max-time 5 'https://api.frankfurter.dev/v1/latest?from=USD&to=GBP' \
+        | jq -r '.rates.GBP // empty' > "$RATE_FILE.tmp" \
+      && [ -s "$RATE_FILE.tmp" ] && mv "$RATE_FILE.tmp" "$RATE_FILE" || touch "$RATE_FILE" ) \
+      >/dev/null 2>&1 &
+  fi
+  USD=$(jq -r '.cost.total_cost_usd // 0' <<<"$INPUT" 2>/dev/null)
+  GBP=$(awk -v u="${USD:-0}" -v r="$RATE" 'BEGIN { printf "£%.2f", u*r }')
+  RIGHT="$GBP"
+  RIGHT_COLORED=$'\033[1;35m'"${GBP}${RESET}"
+fi
 if [ -n "$S_PCT" ] && [ "$S_PCT" != "-" ]; then
   S_INT=$(printf '%.0f' "$S_PCT")
   if   [ "$S_INT" -ge 100 ]; then CIRCLE="●"
@@ -71,14 +91,16 @@ if [ -n "$S_PCT" ] && [ "$S_PCT" != "-" ]; then
   else                           S_COLOR=$'\033[1;36m'
   fi
 
-  RIGHT="${CIRCLE} ${S_INT}%"
+  S_TEXT="${CIRCLE} ${S_INT}%"
   if [ -n "$S_RESET" ] && [ "$S_RESET" != "-" ]; then
     LEFT_S=$(( ${S_RESET%.*} - $(date +%s) ))
     if [ "$LEFT_S" -gt 0 ]; then
-      RIGHT="${RIGHT} ↻$(( LEFT_S / 3600 ))h$(printf '%02d' $(( LEFT_S % 3600 / 60 )))m"
+      S_TEXT="${S_TEXT} ↻$(( LEFT_S / 3600 ))h$(printf '%02d' $(( LEFT_S % 3600 / 60 )))m"
     fi
   fi
-  RIGHT_COLORED="${S_COLOR}${RIGHT}${RESET}"
+  if [ -n "$RIGHT" ]; then RIGHT="${RIGHT}  "; RIGHT_COLORED="${RIGHT_COLORED}  "; fi
+  RIGHT="${RIGHT}${S_TEXT}"
+  RIGHT_COLORED="${RIGHT_COLORED}${S_COLOR}${S_TEXT}${RESET}"
 fi
 
 # Pad between the two halves so the circle sits at the right edge.

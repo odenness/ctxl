@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# ctxl — settings for the ctxl Claude Code status line.
+set -euo pipefail
+
+DIR="${CTXL_HOME:-$HOME/.claude/ctxl}"
+mkdir -p "$DIR"
+
+usage() {
+  cat <<USAGE
+usage: ctxl <command>
+
+  cost [on|off]   show the session cost in £ on the status line (no argument toggles)
+  rate [value]    set the USD→GBP rate, or fetch today's ECB rate if no value given
+  status          show current settings
+USAGE
+}
+
+fetch_rate() {
+  local r
+  r=$(curl -sfL --max-time 5 'https://api.frankfurter.dev/v1/latest?from=USD&to=GBP' \
+      | jq -r '.rates.GBP // empty') || true
+  if [ -z "$r" ]; then echo "ctxl: couldn't fetch rate, keeping $(cat "$DIR/gbp-rate" 2>/dev/null || echo default)" >&2; return 1; fi
+  printf '%s\n' "$r" > "$DIR/gbp-rate"
+  echo "USD→GBP rate: $r"
+}
+
+case "${1:-}" in
+  cost)
+    case "${2:-toggle}" in
+      on)     touch "$DIR/show-cost" ;;
+      off)    rm -f "$DIR/show-cost" ;;
+      toggle) if [ -e "$DIR/show-cost" ]; then rm -f "$DIR/show-cost"; else touch "$DIR/show-cost"; fi ;;
+      *)      usage; exit 1 ;;
+    esac
+    [ -e "$DIR/show-cost" ] && echo "cost: on" || echo "cost: off"
+    ;;
+  rate)
+    if [ -n "${2:-}" ]; then
+      [[ "$2" =~ ^[0-9]*\.?[0-9]+$ ]] || { echo "ctxl: rate must be a number" >&2; exit 1; }
+      printf '%s\n' "$2" > "$DIR/gbp-rate"; echo "USD→GBP rate: $2"
+    else
+      fetch_rate
+    fi
+    ;;
+  status)
+    [ -e "$DIR/show-cost" ] && echo "cost: on" || echo "cost: off"
+    echo "USD→GBP rate: $(cat "$DIR/gbp-rate" 2>/dev/null || echo '0.77 (default)')"
+    ;;
+  -h|--help|help|"") usage ;;
+  *) usage; exit 1 ;;
+esac
